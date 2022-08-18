@@ -4,6 +4,7 @@ on: [push, pull_request, workflow_dispatch]
 
 env:
   CARGO_TERM_COLOR: always
+  SKIP_DOCKER: true
 
 jobs:
   # check:
@@ -50,10 +51,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      # - name: Lint
-      #   run: |
-      #     cargo fmt --all -- --check
-      #     cargo clippy -- -D warnings
       - name: Install cargo check tools
         run: |
           cargo install --locked cargo-deny || true
@@ -62,6 +59,10 @@ jobs:
           cargo install --locked cargo-audit || true
           cargo install --locked cargo-pants || true
           cargo install --version=0.6.1 sqlx-cli || true
+      - name: Lint
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy -- -D warnings
       - name: Check
         run: |
           cargo deny check
