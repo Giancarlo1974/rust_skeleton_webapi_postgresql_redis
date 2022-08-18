@@ -16,7 +16,7 @@ use actix_web_flash_messages::FlashMessagesFramework;
 use actix_web_lab::middleware::from_fn;
 use secrecy::{ExposeSecret, Secret};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+use sqlx::{PgPool, Pool};
 use std::net::TcpListener;
 use tracing_actix_web::TracingLogger;
 
@@ -27,16 +27,16 @@ pub struct Application {
 
 impl Application {
     pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
-        let connection_pool = get_connection_pool(&configuration.database);
-        let email_client = configuration.email_client.client();
+        let connection_pool: PgPool = get_connection_pool(&configuration.database);
+        let email_client: EmailClient = configuration.email_client.client();
 
         let address = format!(
             "{}:{}",
             configuration.application.host, configuration.application.port
         );
-        let listener = TcpListener::bind(&address)?;
-        let port = listener.local_addr().unwrap().port();
-        let server = run(
+        let listener: TcpListener = TcpListener::bind(&address)?;
+        let port: u16 = listener.local_addr().unwrap().port();
+        let server: Server = run(
             listener,
             connection_pool,
             email_client,
