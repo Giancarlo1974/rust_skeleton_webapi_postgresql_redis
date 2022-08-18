@@ -86,8 +86,8 @@ jobs:
       #     cargo pants
       - name: Test
         run: cargo test
-      - name: Build
-        run: cargo build --release
+      # - name: Build
+      #   run: cargo build --release
 
 
 
