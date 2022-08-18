@@ -6,8 +6,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    uses: ectobit/reusable-workflows/.github/workflows/rust-check.yaml@main
+  # check:
+  #   uses: ectobit/reusable-workflows/.github/workflows/rust-check.yaml@main
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -50,10 +50,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Lint
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy -- -D warnings
+      # - name: Lint
+      #   run: |
+      #     cargo fmt --all -- --check
+      #     cargo clippy -- -D warnings
       - name: Install cargo check tools
         run: |
           cargo install --locked cargo-deny || true
