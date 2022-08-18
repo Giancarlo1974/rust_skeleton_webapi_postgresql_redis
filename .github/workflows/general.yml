@@ -61,18 +61,18 @@ jobs:
           cargo install --version=0.6.1 sqlx-cli || true
       - name: Init database
         run: ./scripts/init_db.sh
-      - name: Lint
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy -- -D warnings
-      - name: Check
-        run: |
-          cargo deny check
-          cargo outdated --exit-code 1
-          cargo udeps
-          rm -rf ~/.cargo/advisory-db
-          cargo audit
-          cargo pants
+      # - name: Lint
+      #   run: |
+      #     cargo fmt --all -- --check
+      #     cargo clippy -- -D warnings
+      # - name: Check
+      #   run: |
+      #     cargo deny check
+      #     cargo outdated --exit-code 1
+      #     cargo udeps
+      #     rm -rf ~/.cargo/advisory-db
+      #     cargo audit
+      #     cargo pants
       - name: Test
         run: cargo test
 
