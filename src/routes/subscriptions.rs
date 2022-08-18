@@ -4,7 +4,7 @@ use crate::startup::ApplicationBaseUrl;
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse, ResponseError};
 use anyhow::Context;
-use chrono::Utc;
+// use chrono::Utc;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -138,12 +138,12 @@ pub async fn insert_subscriber(
     sqlx::query!(
         r#"
     INSERT INTO subscriptions (id, email, name, subscribed_at, status)
-    VALUES ($1, $2, $3, $4, 'pending_confirmation')
+    VALUES ($1, $2, $3, '2022-01-01T00:00:00Z', 'pending_confirmation')
             "#,
         subscriber_id,
         new_subscriber.email.as_ref(),
-        new_subscriber.name.as_ref(),
-        Utc::now()
+        new_subscriber.name.as_ref()
+        // Utc::now()
     )
     .execute(transaction)
     .await?;

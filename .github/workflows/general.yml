@@ -1,0 +1,156 @@
+name: Rust
+
+on: [push, pull_request, workflow_dispatch]
+
+env:
+  CARGO_TERM_COLOR: always
+  SKIP_DOCKER: true
+
+jobs:
+  # check:
+  #   uses: ectobit/reusable-workflows/.github/workflows/rust-check.yaml@main
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:12-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: newsletter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        # Docker Hub image
+        image: redis
+        ports:
+        - 6379:6379        
+        # Set health checks to wait until redis has started
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5          
+    steps:
+
+      - name: Check out
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: nightly
+          override: true
+
+      - name: Set up cargo cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install cargo check tools
+        run: |
+          cargo install --locked cargo-deny || true
+          cargo install --locked cargo-outdated || true
+          cargo install --locked cargo-udeps || true
+          cargo install --locked cargo-audit || true
+          cargo install --locked cargo-pants || true
+          cargo install --version=0.6.1 sqlx-cli || true
+      - name: Init database
+        run: ./scripts/init_db.sh
+      # - name: Lint
+      #   run: |
+      #     cargo fmt --all -- --check
+      #     cargo clippy -- -D warnings
+      # - name: Check
+      #   run: |
+      #     cargo deny check
+      #     cargo outdated --exit-code 1
+      #     cargo udeps
+      #     rm -rf ~/.cargo/advisory-db
+      #     cargo audit
+      #     cargo pants
+      - name: Test
+        run: cargo test
+      - name: Build
+        run: cargo build --release
+
+
+
+      # - uses: actions/checkout@v2
+      # - name: ls
+      #   run: ls -liah
+      # - uses: actions-rs/toolchain@v1
+      #   with:
+      #     profile: minimal
+      #     toolchain: stable
+      #     override: true
+      # - name: Install Dependencies
+      #   run: cargo install --version=0.6.1 sqlx-cli
+      # - name: Init database
+      #   run: ./scripts/init_db.sh
+      # - uses: actions-rs/cargo@v1
+      #   with:
+      #     command: test
+
+  # fmt:
+  #   name: Rustfmt
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         override: true
+  #         components: rustfmt
+  #     - uses: actions-rs/cargo@v1
+  #       with:
+  #         command: fmt
+  #         args: --all -- --check
+
+  # clippy:
+  #   name: Clippy
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         override: true
+  #         components: clippy
+  #     - uses: actions-rs/clippy-check@v1
+  #       with:
+  #         token: ${{ secrets.GITHUB_TOKEN }}
+  #         args: -- -D warnings
+
+  # coverage:
+  #   name: Code coverage
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v2
+
+  #     - name: Install stable toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         override: true
+
+  #     - name: Run cargo-tarpaulin
+  #       uses: actions-rs/tarpaulin@v0.1
+  #       with:
+  #         args: '--ignore-tests'
