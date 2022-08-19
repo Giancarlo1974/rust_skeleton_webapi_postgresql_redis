@@ -6,7 +6,6 @@ use uuid::Uuid;
 use wiremock::MockServer;
 use zero2prod::configuration::{get_configuration, DatabaseSettings};
 use zero2prod::email_client::EmailClient;
-use zero2prod::issue_delivery_worker::{try_execute_task, ExecutionOutcome};
 use zero2prod::startup::{get_connection_pool, Application};
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
 
@@ -40,18 +39,6 @@ pub struct ConfirmationLinks {
 }
 
 impl TestApp {
-    pub async fn dispatch_all_pending_emails(&self) {
-        loop {
-            if let ExecutionOutcome::EmptyQueue =
-                try_execute_task(&self.db_pool, &self.email_client)
-                    .await
-                    .unwrap()
-            {
-                break;
-            }
-        }
-    }
-
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
         self.api_client
             .post(&format!("{}/subscriptions", &self.address))
@@ -85,73 +72,8 @@ impl TestApp {
             .unwrap()
     }
 
-    pub async fn get_admin_dashboard(&self) -> reqwest::Response {
-        self.api_client
-            .get(&format!("{}/admin/dashboard", &self.address))
-            .send()
-            .await
-            .expect("Failed to execute request.")
-    }
 
-    pub async fn get_admin_dashboard_html(&self) -> String {
-        self.get_admin_dashboard().await.text().await.unwrap()
-    }
 
-    pub async fn get_change_password(&self) -> reqwest::Response {
-        self.api_client
-            .get(&format!("{}/admin/password", &self.address))
-            .send()
-            .await
-            .expect("Failed to execute request.")
-    }
-
-    pub async fn get_change_password_html(&self) -> String {
-        self.get_change_password().await.text().await.unwrap()
-    }
-
-    pub async fn post_logout(&self) -> reqwest::Response {
-        self.api_client
-            .post(&format!("{}/admin/logout", &self.address))
-            .send()
-            .await
-            .expect("Failed to execute request.")
-    }
-
-    pub async fn post_change_password<Body>(&self, body: &Body) -> reqwest::Response
-    where
-        Body: serde::Serialize,
-    {
-        self.api_client
-            .post(&format!("{}/admin/password", &self.address))
-            .form(body)
-            .send()
-            .await
-            .expect("Failed to execute request.")
-    }
-
-    pub async fn get_publish_newsletter(&self) -> reqwest::Response {
-        self.api_client
-            .get(&format!("{}/admin/newsletters", &self.address))
-            .send()
-            .await
-            .expect("Failed to execute request.")
-    }
-
-    pub async fn get_publish_newsletter_html(&self) -> String {
-        self.get_publish_newsletter().await.text().await.unwrap()
-    }
-
-    pub async fn post_publish_newsletter<Body>(&self, body: &Body) -> reqwest::Response
-    where
-        Body: serde::Serialize,
-    {
-        self.api_client
-            .post(&format!("{}/admin/newsletters", &self.address))
-            .form(body)
-            .send()
-            .await
-            .expect("Failed to execute request.")
-    }
 
     /// Extract the confirmation links embedded in the request to the email API.
     pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
@@ -264,13 +186,6 @@ impl TestUser {
         }
     }
 
-    pub async fn login(&self, app: &TestApp) {
-        app.post_login(&serde_json::json!({
-            "username": &self.username,
-            "password": &self.password
-        }))
-        .await;
-    }
 
     async fn store(&self, pool: &PgPool) {
         let salt = SaltString::generate(&mut rand::thread_rng());
