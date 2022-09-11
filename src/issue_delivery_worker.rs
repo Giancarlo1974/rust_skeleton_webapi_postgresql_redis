@@ -1,25 +1,23 @@
-use crate::{configuration::Settings, startup::get_connection_pool};
-use crate::{domain::SubscriberEmail, email_client::EmailClient};
-use sqlx::{PgPool, Postgres, Transaction};
+use crate::{configuration::Settings};
+// use crate::{email_client::EmailClient};
 use std::time::Duration;
-use tracing::{field::display, Span};
-use uuid::Uuid;
 
 use futures::prelude::*;
 use libp2p::ping::{Ping, PingConfig};
 use libp2p::swarm::{Swarm, SwarmEvent};
 use libp2p::{identity, Multiaddr, PeerId};
-use std::error::Error;
 
 pub async fn run_worker_until_stopped(configuration: Settings) -> Result<(), anyhow::Error> {
-    let connection_pool = get_connection_pool(&configuration.database);
-    let email_client = configuration.email_client.client();
-    worker_loop(connection_pool, email_client).await
+    println!( "{}",configuration.database.database_name.to_lowercase() );
+    // let connection_pool = get_connection_pool(&configuration.database);
+    // let email_client = configuration.email_client.client();
+    // worker_loop(email_client).await
+    worker_loop().await
 }
 
-async fn worker_loop(pool: PgPool, email_client: EmailClient) -> Result<(), anyhow::Error> {
+async fn worker_loop() -> Result<(), anyhow::Error> {
     loop {
-        match try_execute_task(&pool, &email_client).await {
+        match try_execute_task().await {
             Ok(ExecutionOutcome::EmptyQueue) => {
                 tokio::time::sleep(Duration::from_secs(10)).await;
             }
@@ -44,10 +42,7 @@ pub enum ExecutionOutcome {
     ),
     err
 )]
-pub async fn try_execute_task(
-    pool: &PgPool,
-    email_client: &EmailClient,
-) -> Result<ExecutionOutcome, anyhow::Error> {
+pub async fn try_execute_task() -> Result<ExecutionOutcome, anyhow::Error> {
 
     // inizio loop
     println!("ciao mondo");
@@ -88,6 +83,6 @@ pub async fn try_execute_task(
 
     // fine loop
 
-    Ok(ExecutionOutcome::TaskCompleted)
+    // Ok(ExecutionOutcome::TaskCompleted)
 }
 
