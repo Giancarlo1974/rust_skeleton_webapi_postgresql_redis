@@ -59,6 +59,9 @@ jobs:
           cargo install --locked cargo-audit || true
           cargo install --locked cargo-pants || true
           cargo install --version=0.6.1 sqlx-cli || true
+      - name: Install protoc tool
+        run: |
+          apt install -y protobuf-compiler libprotobuf-dev
       - name: Init database
         run: ./scripts/init_db.sh
       # - name: Lint
