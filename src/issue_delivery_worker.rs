@@ -5,6 +5,12 @@ use std::time::Duration;
 use tracing::{field::display, Span};
 use uuid::Uuid;
 
+use futures::prelude::*;
+use libp2p::ping::{Ping, PingConfig};
+use libp2p::swarm::{Swarm, SwarmEvent};
+use libp2p::{identity, Multiaddr, PeerId};
+use std::error::Error;
+
 pub async fn run_worker_until_stopped(configuration: Settings) -> Result<(), anyhow::Error> {
     let connection_pool = get_connection_pool(&configuration.database);
     let email_client = configuration.email_client.client();
@@ -42,117 +48,46 @@ pub async fn try_execute_task(
     pool: &PgPool,
     email_client: &EmailClient,
 ) -> Result<ExecutionOutcome, anyhow::Error> {
-    let task = dequeue_task(pool).await?;
-    if task.is_none() {
-        return Ok(ExecutionOutcome::EmptyQueue);
+
+    // inizio loop
+    println!("ciao mondo");
+    let local_key = identity::Keypair::generate_ed25519();
+    let local_peer_id = PeerId::from(local_key.public());
+    println!("Local peer id: {:?}", local_peer_id);
+
+    // uso il trasporto development (tcp + cifratura noise)
+    let transport = libp2p::development_transport(local_key).await?;
+    // Crea comportamento di rete ping.
+    //
+    // A scopo illustrativo, il protocollo ping è configurato per mantenere viva la connessione,
+    // quindi una sequenza continua di ping può essere osservata.
+    let behavior = Ping::new(PingConfig::new().with_keep_alive(true));
+
+    // unisce transport, behavior e local_peer_id per farli lavorare insieme
+    let mut swarm = Swarm::new(transport, behavior, local_peer_id);
+
+    // Tell the swarm to listen on all interfaces and a random, OS-assigned
+    // port.
+    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+
+    // Dial the peer identified by the multi-address given as the second
+    // command-line argument, if any.
+    if let Some(addr) = std::env::args().nth(1) {
+        let remote: Multiaddr = addr.parse()?;
+        swarm.dial(remote)?;
+        println!("Dialed {}", addr)
     }
-    let (transaction, issue_id, email) = task.unwrap();
-    Span::current()
-        .record("newsletter_issue_id", &display(issue_id))
-        .record("subscriber_email", &display(&email));
-    match SubscriberEmail::parse(email.clone()) {
-        Ok(email) => {
-            let issue = get_issue(pool, issue_id).await?;
-            if let Err(e) = email_client
-                .send_email(
-                    &email,
-                    &issue.title,
-                    &issue.html_content,
-                    &issue.text_content,
-                )
-                .await
-            {
-                tracing::error!(
-                    error.cause_chain = ?e,
-                    error.message = %e,
-                    "Failed to deliver issue to a confirmed subscriber. \
-                        Skipping.",
-                );
-            }
-        }
-        Err(e) => {
-            tracing::error!(
-                error.cause_chain = ?e,
-                error.message = %e,
-                "Skipping a confirmed subscriber. \
-                    Their stored contact details are invalid",
-            );
+
+    loop {
+        match swarm.select_next_some().await {
+            SwarmEvent::NewListenAddr { address, .. } => println!("Listening on {:?}", address),
+            SwarmEvent::Behaviour(event) => println!("{:?}", event),
+            _ => {}
         }
     }
-    delete_task(transaction, issue_id, &email).await?;
+
+    // fine loop
+
     Ok(ExecutionOutcome::TaskCompleted)
 }
 
-type PgTransaction = Transaction<'static, Postgres>;
-
-#[tracing::instrument(skip_all)]
-async fn dequeue_task(
-    pool: &PgPool,
-) -> Result<Option<(PgTransaction, Uuid, String)>, anyhow::Error> {
-    let mut transaction = pool.begin().await?;
-    let r = sqlx::query!(
-        r#"
-        SELECT newsletter_issue_id, subscriber_email
-        FROM issue_delivery_queue
-        FOR UPDATE
-        SKIP LOCKED
-        LIMIT 1
-        "#,
-    )
-    .fetch_optional(&mut transaction)
-    .await?;
-    if let Some(r) = r {
-        Ok(Some((
-            transaction,
-            r.newsletter_issue_id,
-            r.subscriber_email,
-        )))
-    } else {
-        Ok(None)
-    }
-}
-
-#[tracing::instrument(skip_all)]
-async fn delete_task(
-    mut transaction: PgTransaction,
-    issue_id: Uuid,
-    email: &str,
-) -> Result<(), anyhow::Error> {
-    sqlx::query!(
-        r#"
-        DELETE FROM issue_delivery_queue
-        WHERE 
-            newsletter_issue_id = $1 AND
-            subscriber_email = $2 
-        "#,
-        issue_id,
-        email
-    )
-    .execute(&mut transaction)
-    .await?;
-    transaction.commit().await?;
-    Ok(())
-}
-
-struct NewsletterIssue {
-    title: String,
-    text_content: String,
-    html_content: String,
-}
-
-#[tracing::instrument(skip_all)]
-async fn get_issue(pool: &PgPool, issue_id: Uuid) -> Result<NewsletterIssue, anyhow::Error> {
-    let issue = sqlx::query_as!(
-        NewsletterIssue,
-        r#"
-        SELECT title, text_content, html_content
-        FROM newsletter_issues
-        WHERE
-            newsletter_issue_id = $1
-        "#,
-        issue_id
-    )
-    .fetch_one(pool)
-    .await?;
-    Ok(issue)
-}
