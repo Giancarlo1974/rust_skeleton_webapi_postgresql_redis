@@ -7,6 +7,24 @@ use libp2p::ping::{Ping, PingConfig};
 use libp2p::swarm::{Swarm, SwarmEvent};
 use libp2p::{identity, Multiaddr, PeerId};
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 pub async fn run_worker_until_stopped(configuration: Settings) -> Result<(), anyhow::Error> {
     println!( "{}",configuration.database.database_name.to_lowercase() );
     // let connection_pool = get_connection_pool(&configuration.database);
@@ -58,6 +76,46 @@ pub async fn try_execute_task() -> Result<ExecutionOutcome, anyhow::Error> {
     // quindi una sequenza continua di ping può essere osservata.
     let behavior = Ping::new(PingConfig::new().with_keep_alive(true));
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ******************************************************************
+    
+    // ******************************************************************
+
+
+
+
+
+
     // unisce transport, behavior e local_peer_id per farli lavorare insieme
     let mut swarm = Swarm::new(transport, behavior, local_peer_id);
 
@@ -83,6 +141,6 @@ pub async fn try_execute_task() -> Result<ExecutionOutcome, anyhow::Error> {
 
     // fine loop
 
-    // Ok(ExecutionOutcome::TaskCompleted)
+    
 }
 
