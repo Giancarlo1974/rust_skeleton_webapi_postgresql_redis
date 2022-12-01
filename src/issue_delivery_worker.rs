@@ -1,12 +1,26 @@
 use crate::{configuration::Settings};
 // use crate::{email_client::EmailClient};
+// use std::time::Duration;
+
+// use futures::prelude::*;
+// use libp2p::ping::{Ping, PingConfig};
+// use libp2p::swarm::{Swarm, SwarmEvent};
+// use libp2p::{identity, Multiaddr, PeerId};
+
+
+
+
+use futures::StreamExt;
+use libp2p::core::identity;
+use libp2p::core::PeerId;
+use libp2p::multiaddr::Protocol;
+use libp2p::ping::{Ping, PingConfig, PingEvent, PingSuccess};
+use libp2p::swarm::SwarmEvent;
+use libp2p::Swarm;
+use libp2p::{development_transport, rendezvous, Multiaddr};
 use std::time::Duration;
 
-use futures::prelude::*;
-use libp2p::ping::{Ping, PingConfig};
-use libp2p::swarm::{Swarm, SwarmEvent};
-use libp2p::{identity, Multiaddr, PeerId};
-
+const NAMESPACE: &str = "rendezvous";
 
 
 
@@ -64,17 +78,8 @@ pub async fn try_execute_task() -> Result<ExecutionOutcome, anyhow::Error> {
 
     // inizio loop
     println!("ciao mondo");
-    let local_key = identity::Keypair::generate_ed25519();
-    let local_peer_id = PeerId::from(local_key.public());
-    println!("Local peer id: {:?}", local_peer_id);
+    tracing::debug!("ciao mondo");
 
-    // uso il trasporto development (tcp + cifratura noise)
-    let transport = libp2p::development_transport(local_key).await?;
-    // Crea comportamento di rete ping.
-    //
-    // A scopo illustrativo, il protocollo ping è configurato per mantenere viva la connessione,
-    // quindi una sequenza continua di ping può essere osservata.
-    let behavior = Ping::new(PingConfig::new().with_keep_alive(true));
 
 
 
@@ -108,39 +113,146 @@ pub async fn try_execute_task() -> Result<ExecutionOutcome, anyhow::Error> {
 
 
     // ******************************************************************
-    
-    // ******************************************************************
 
+    let identity = identity::Keypair::generate_ed25519();
+    let rendezvous_point_address = "/ip4/127.0.0.1/tcp/62649".parse::<Multiaddr>().unwrap();
+    let rendezvous_point = "12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+        .parse()
+        .unwrap();
 
+    let mut swarm = Swarm::new(
+        development_transport(identity.clone()).await.unwrap(),
+        MyBehaviour {
+            rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
+            ping: Ping::new(
+                PingConfig::new()
+                    .with_interval(Duration::from_secs(1))
+                    .with_keep_alive(true),
+            ),
+        },
+        PeerId::from(identity.public()),
+    );
 
+    log::info!("Local peer id: {}", swarm.local_peer_id());
 
+    let _ = swarm.dial(rendezvous_point_address.clone()).unwrap();
 
-
-    // unisce transport, behavior e local_peer_id per farli lavorare insieme
-    let mut swarm = Swarm::new(transport, behavior, local_peer_id);
-
-    // Tell the swarm to listen on all interfaces and a random, OS-assigned
-    // port.
-    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-    // Dial the peer identified by the multi-address given as the second
-    // command-line argument, if any.
-    if let Some(addr) = std::env::args().nth(1) {
-        let remote: Multiaddr = addr.parse()?;
-        swarm.dial(remote)?;
-        println!("Dialed {}", addr)
-    }
+    let mut discover_tick = tokio::time::interval(Duration::from_secs(30));
+    let mut cookie = None;
 
     loop {
-        match swarm.select_next_some().await {
-            SwarmEvent::NewListenAddr { address, .. } => println!("Listening on {:?}", address),
-            SwarmEvent::Behaviour(event) => println!("{:?}", event),
-            _ => {}
+        tokio::select! {
+                event = swarm.select_next_some() => match event {
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == rendezvous_point => {
+                        log::info!(
+                            "Connected to rendezvous point, discovering nodes in '{}' namespace ...",
+                            NAMESPACE
+                        );
+
+                        swarm.behaviour_mut().rendezvous.discover(
+                            Some(rendezvous::Namespace::new(NAMESPACE.to_string()).unwrap()),
+                            None,
+                            None,
+                            rendezvous_point,
+                        );
+                    }
+                    SwarmEvent::Behaviour(MyEvent::Rendezvous(rendezvous::client::Event::Discovered {
+                        registrations,
+                        cookie: new_cookie,
+                        ..
+                    })) => {
+                        cookie.replace(new_cookie);
+
+                        for registration in registrations {
+                            for address in registration.record.addresses() {
+                                let peer = registration.record.peer_id();
+                                log::info!("Discovered peer {} at {}", peer, address);
+
+                                let p2p_suffix = Protocol::P2p(*peer.as_ref());
+                                let address_with_p2p =
+                                    if !address.ends_with(&Multiaddr::empty().with(p2p_suffix.clone())) {
+                                        address.clone().with(p2p_suffix)
+                                    } else {
+                                        address.clone()
+                                    };
+
+                                swarm.dial(address_with_p2p).unwrap()
+                            }
+                        }
+                    }
+                    SwarmEvent::Behaviour(MyEvent::Ping(PingEvent {
+                        peer,
+                        result: Ok(PingSuccess::Ping { rtt }),
+                    })) if peer != rendezvous_point => {
+                        log::info!("Ping to {} is {}ms", peer, rtt.as_millis())
+                    }
+                    other => {
+                        log::debug!("Unhandled {:?}", other);
+                    }
+            },
+            _ = discover_tick.tick(), if cookie.is_some() =>
+                swarm.behaviour_mut().rendezvous.discover(
+                    Some(rendezvous::Namespace::new(NAMESPACE.to_string()).unwrap()),
+                    cookie.clone(),
+                    None,
+                    rendezvous_point
+                    )
         }
     }
+
+    // ******************************************************************
+
+
+
+
+
 
     // fine loop
 
     
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[derive(Debug)]
+enum MyEvent {
+    Rendezvous(rendezvous::client::Event),
+    Ping(PingEvent),
+}
+
+impl From<rendezvous::client::Event> for MyEvent {
+    fn from(event: rendezvous::client::Event) -> Self {
+        MyEvent::Rendezvous(event)
+    }
+}
+
+impl From<PingEvent> for MyEvent {
+    fn from(event: PingEvent) -> Self {
+        MyEvent::Ping(event)
+    }
+}
+
+#[derive(libp2p::NetworkBehaviour)]
+#[behaviour(event_process = false)]
+#[behaviour(out_event = "MyEvent")]
+struct MyBehaviour {
+    rendezvous: rendezvous::client::Behaviour,
+    ping: Ping,
+}
