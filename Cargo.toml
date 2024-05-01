@@ -38,7 +38,7 @@ tracing-actix-web = "0.6"
 secrecy = { version = "0.8", features = ["serde"] }
 actix-web-flash-messages = { version = "0.4", features = ["cookies"] }
 actix-session = { version = "0.7.2", features = ["redis-rs-tls-session"] }
-serde_json = "1"
+serde_json = "1.0.116"
 actix-web-lab = "0.17.0"
 
 [dev-dependencies]
@@ -48,6 +48,6 @@ quickcheck = "0.9.2"
 quickcheck_macros = "1.0.0"
 fake = "~2.3.0"
 wiremock = "0.5"
-serde_json = "1.0.85"
+serde_json = "1.0.116"
 linkify = "0.9.0"
 serde_urlencoded = "0.7.1"
