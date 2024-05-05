@@ -31,7 +31,7 @@ serde-aux = "4"
 unicode-segmentation = "1.9.0"
 rand = { version = "0.8", features=["std_rng"] }
 anyhow = "1.0.64"
-base64 = "0.13.0"
+base64 = "0.22.0"
 argon2 = { version = "0.4", features = ["std"] }
 validator = "0.16.0"
 tracing-actix-web = "0.6"
